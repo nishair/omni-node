@@ -1,16 +1,18 @@
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { SectorShare } from '../data/compute'
-import { STATION_BY_ID, type StationFilter } from '../data/types'
+import { ALL, stationById, type Source, type StationFilter } from '../data/types'
 import { fmtInt, fmtPercent } from '../data/format'
 
 interface Props {
+  source: Source
   sectors: SectorShare[]
   filter: StationFilter
 }
 
 /** Breakdown: share of windy hours by compass sector. Single series, so the bars take the selected station's color. */
-export function WindBreakdown({ sectors, filter }: Props) {
-  const color = filter === 'all' ? 'var(--mark-neutral)' : `var(--series-${STATION_BY_ID[filter].slot})`
+export function WindBreakdown({ source, sectors, filter }: Props) {
+  const slot = filter === ALL ? null : stationById(source, filter)?.slot
+  const color = slot ? `var(--series-${slot})` : 'var(--mark-neutral)'
   const total = sectors.reduce((a, s) => a + s.hours, 0)
   const top = sectors.reduce((a, s) => (s.hours > a.hours ? s : a), sectors[0])
 

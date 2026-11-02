@@ -1,57 +1,86 @@
-export type StationId = '63rd' | 'foster' | 'oak'
-export type StationFilter = StationId | 'all'
+/** Shared shapes. A Source plugs a dataset into the dashboard; everything else is generic. */
+
+export type StationFilter = string // a station id, or ALL
+export const ALL = 'all'
 
 export interface Station {
-  id: StationId
-  /** Exact `station_name` value in the dataset. */
+  id: string
   name: string
   shortName: string
-  /** Categorical palette slot. Fixed per station so color follows the entity, never its rank. */
-  slot: 1 | 2 | 3
+  /** Categorical palette slot, fixed per station so color follows the entity, never its rank. */
+  slot: 1 | 2 | 3 | 4
 }
-
-/** Fixed order: palette slot is assigned by this order and never re-cycled when the filter changes. */
-export const STATIONS: readonly Station[] = [
-  { id: '63rd', name: '63rd Street Weather Station', shortName: '63rd Street', slot: 1 },
-  { id: 'foster', name: 'Foster Weather Station', shortName: 'Foster', slot: 2 },
-  { id: 'oak', name: 'Oak Street Weather Station', shortName: 'Oak Street', slot: 3 },
-]
-
-export const STATION_BY_ID: Record<StationId, Station> = Object.fromEntries(
-  STATIONS.map((s) => [s.id, s]),
-) as Record<StationId, Station>
 
 export interface Reading {
-  station: StationId
-  /** Epoch ms. The dataset publishes floating Chicago wall-clock times; they are parsed as browser-local time. */
+  station: string
+  /** Epoch ms, parsed from the dataset's floating local time as browser-local time. */
   ts: number
-  airTemp: number | null // °C
-  humidity: number | null // %
-  windSpeed: number | null // m/s
-  maxWind: number | null // m/s
-  windDir: number | null // degrees, 0 = north
-  pressure: number | null // hPa
-  solar: number | null // W/m²
-  rain: number | null // mm in the interval
-  battery: number | null // volts
+  /** Metric key to value. Missing or unparsable values are null. */
+  values: Record<string, number | null>
 }
 
-export type MetricKey = 'airTemp' | 'humidity' | 'windSpeed' | 'pressure'
+/** Every source must publish these two keys for the wind-direction breakdown. */
+export const WIND_SPEED = 'windSpeed'
+export const WIND_DIR = 'windDir'
 
 export interface MetricDef {
-  key: MetricKey
+  key: string
   label: string
   unit: string
   digits: number
+  /** Decimals on axis ticks; defaults to 0. */
+  tickDigits?: number
 }
 
-export const METRICS: readonly MetricDef[] = [
-  { key: 'airTemp', label: 'Air temperature', unit: '°C', digits: 1 },
-  { key: 'humidity', label: 'Humidity', unit: '%', digits: 0 },
-  { key: 'windSpeed', label: 'Wind speed', unit: 'm/s', digits: 1 },
-  { key: 'pressure', label: 'Barometric pressure', unit: 'hPa', digits: 1 },
-]
+export type StatusLevel = 'good' | 'warning' | 'critical'
 
-export const METRIC_BY_KEY: Record<MetricKey, MetricDef> = Object.fromEntries(
-  METRICS.map((m) => [m.key, m]),
-) as Record<MetricKey, MetricDef>
+export type TileSpec =
+  | { kind: 'latest'; metric: string; label: string; unit: string; digits: number }
+  | { kind: 'sum'; metric: string; label: string; unit: string; digits: number; countLabel: string }
+  | {
+      kind: 'minLatest'
+      metric: string
+      label: string
+      unit: string
+      digits: number
+      status: (value: number) => StatusLevel
+      statusLabel: Record<StatusLevel, string>
+    }
+  | { kind: 'range24h'; metric: string; label: string; unit: string; digits: number }
+  | { kind: 'completeness'; label: string }
+
+export interface TableColumn {
+  key: string
+  label: string
+  digits: number
+}
+
+export interface Source {
+  id: string
+  /** Page heading. */
+  name: string
+  /** Region switch label. */
+  shortName: string
+  lede: string
+  datasetUrl: string
+  datasetLabel: string
+  stations: readonly Station[]
+  metrics: readonly MetricDef[]
+  tiles: readonly TileSpec[]
+  tableColumns: readonly TableColumn[]
+  /** Fetches the raw payload from the live API. The same shape is stored in public/data/<id>.json. */
+  fetchRaw(signal?: AbortSignal): Promise<unknown>
+  parse(raw: unknown): Reading[]
+}
+
+export interface Dataset {
+  readings: Reading[]
+  origin: 'live' | 'snapshot'
+  fetchedAt: Date
+}
+
+export const WINDOW_DAYS = 14
+
+export function stationById(source: Source, id: string): Station | undefined {
+  return source.stations.find((s) => s.id === id)
+}
